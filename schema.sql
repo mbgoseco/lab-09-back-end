@@ -10,13 +10,15 @@ CREATE TABLE locations (
   search_query VARCHAR(255),
   formatted_query VARCHAR(255),
   latitude NUMERIC(8, 6),
-  longitude NUMERIC(9, 6)
+  longitude NUMERIC(9, 6),
+  created_at BIGINT
 );
 
 CREATE TABLE weathers (
   id SERIAL PRIMARY KEY,
   forecast VARCHAR(255),
   time VARCHAR(255),
+  created_at BIGINT,
   location_id INTEGER NOT NULL,
   FOREIGN KEY (location_id) REFERENCES locations (id)
 );
@@ -28,6 +30,7 @@ CREATE TABLE restaurants (
   price VARCHAR(255),
   rating NUMERIC(4, 2),
   url VARCHAR(255),
+  created_at BIGINT,
   location_id INTEGER NOT NULL,
   FOREIGN KEY (location_id) REFERENCES locations (id)
 );
@@ -40,6 +43,7 @@ CREATE TABLE movies (
   image_url VARCHAR(255),
   popularity NUMERIC(5, 3),
   released_on VARCHAR(255),
+  created_at BIGINT,
   location_id INTEGER NOT NULL,
   FOREIGN KEY (location_id) REFERENCES locations (id)
 );
@@ -50,6 +54,7 @@ CREATE TABLE meetups (
   name VARCHAR(255),
   creation_date VARCHAR(255),
   host VARCHAR(255),
+  created_at BIGINT,
   location_id INTEGER NOT NULL,
   FOREIGN KEY (location_id) REFERENCES locations (id)
 );
@@ -66,6 +71,7 @@ CREATE TABLE trails (
   conditions VARCHAR(255),
   condition_date VARCHAR(255),
   condition_time VARCHAR(255),
+  created_at BIGINT,
   location_id INTEGER NOT NULL,
   FOREIGN KEY (location_id) REFERENCES locations (id)
 );
