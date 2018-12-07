@@ -51,23 +51,31 @@ app.get('/meetups', getMeetups);
 app.get('/trails', getTrails);
 
 
+// Clears the DB of a location if data is stale
+function deleteByLocationId(table, city) {
+  const SQL = `DELETE from ${table} WHERE location_id=${city};`;
+  console.log(`Deleting ID ${city} from table ${table}`);
+  return client.query(SQL);
+}
+
+
 // Location constructor
 function Location(query, data) {
   this.search_query = query;
   this.formatted_query = data.formatted_address;
   this.latitude = data.geometry.location.lat;
   this.longitude = data.geometry.location.lng;
+  this.createdAt = Date.now();
 }
 // Saves location to the database
 Location.prototype.save = function() {
   let SQL = `
     INSERT INTO locations
-      (search_query, formatted_query, latitude, longitude) 
-      VALUES($1,$2,$3,$4) 
+      (search_query, formatted_query, latitude, longitude, created_at) 
+      VALUES($1, $2, $3, $4, $5) 
       RETURNING id;
   `;
   let values = Object.values(this);
-  console.log(values);
   return client.query(SQL,values);
 };
 
@@ -124,10 +132,11 @@ Location.lookupLocation = (handler) => {
 function Weather(day) {
   this.forecast = day.summary;
   this.time = new Date(day.time * 1000).toDateString();
+  this.created_at = Date.now();
 }
 // Saves weather to db
 Weather.prototype.save = function(id) {
-  const SQL = `INSERT INTO weathers (forecast, time, location_id) VALUES ($1, $2, $3);`;
+  const SQL = `INSERT INTO weathers (forecast, time, created_at, location_id) VALUES ($1, $2, $3, $4);`;
   const values = Object.values(this);
   values.push(id);
   client.query(SQL, values);
@@ -167,7 +176,17 @@ Weather.lookupWeather = function(handler) {
   client.query(SQL, [handler.location.id]).then(result => {
     if(result.rowCount > 0) {
       console.log('Got weather data from SQL');
-      handler.cacheHit(result);
+      // Checks to see if DB data is stale then deletes and gets new API data if so
+      let reqAgeMins = (Date.now() - result.rows[0].created_at) / (1000 * 60);
+      console.log(handler.location.id);
+      console.log(reqAgeMins);
+      if (reqAgeMins > 1) {
+        console.log(`...but it's stale!`);
+        deleteByLocationId('weathers', handler.location.id);
+        handler.cacheMiss();
+      } else {
+        handler.cacheHit(result)
+      }
     } else {
       console.log('Got weather data from API');
       handler.cacheMiss();
@@ -184,11 +203,12 @@ function Restaurant(business) {
   this.price = business.price;
   this.rating = business.rating;
   this.url = business.url;
+  this.created_at = Date.now();
 }
 
 // Saves restaurants to db
 Restaurant.prototype.save = function(id) {
-  const SQL = `INSERT INTO restaurants (name, image_url, price, rating, url, location_id) VALUES ($1, $2, $3, $4, $5, $6);`;
+  const SQL = `INSERT INTO restaurants (name, image_url, price, rating, url, created_at, location_id) VALUES ($1, $2, $3, $4, $5, $6, $7);`;
   const values = Object.values(this);
   values.push(id);
   client.query(SQL, values);
@@ -227,8 +247,15 @@ Restaurant.lookupRestaurant = function(handler) {
   const SQL = `SELECT * FROM restaurants WHERE location_id=$1;`;
   client.query(SQL, [handler.location.id]).then(result => {
     if(result.rowCount > 0) {
-      console.log('Got restaurant data from SQL');
-      handler.cacheHit(result);
+      // Checks to see if DB data is stale then deletes and gets new API data if so
+      let reqAgeMins = (Date.now() - result.rows[0].created_at) / (1000 * 60);
+      if (reqAgeMins > 2) {
+        console.log(`...but it's stale!`);
+        deleteByLocationId('restaurants', handler.location.id);
+        handler.cacheMiss();
+      } else {
+        handler.cacheHit(result)
+      }
     } else {
       console.log('Got restaurant data from API');
       handler.cacheMiss();
@@ -246,10 +273,11 @@ function Movie(data) {
   this.image_url = `https://image.tmdb.org/t/p/w200_and_h300_bestv2/${data.poster_path}`;
   this.popularity = data.popularity;
   this.released_on = data.release_date;
+  this.created_at = Date.now();
 }
 // Saves movies to db
 Movie.prototype.save = function(id) {
-  const SQL = `INSERT INTO movies (title, overview, average_votes, total_votes, image_url, popularity, released_on, location_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`;
+  const SQL = `INSERT INTO movies (title, overview, average_votes, total_votes, image_url, popularity, released_on, created_at, location_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`;
   const values = Object.values(this);
   values.push(id);
   client.query(SQL, values);
@@ -289,7 +317,15 @@ Movie.lookupMovies = function(handler) {
   client.query(SQL, [handler.location.id]).then(result => {
     if(result.rowCount > 0) {
       console.log('Got movie data from SQL');
-      handler.cacheHit(result);
+      // Checks to see if DB data is stale then deletes and gets new API data if so
+      let reqAgeMins = (Date.now() - result.rows[0].created_at) / (1000 * 60);
+      if (reqAgeMins > 3) {
+        console.log(`...but it's stale!`);
+        deleteByLocationId('movies', handler.location.id);
+        handler.cacheMiss();
+      } else {
+        handler.cacheHit(result);
+      }
     } else {
       console.log('Got movie data from API');
       handler.cacheMiss();
@@ -304,10 +340,11 @@ function Meetup(data) {
   this.name = data.name;
   this.creation_date = new Date(data.created).toDateString();
   this.host = data.group.name;
+  this.created_at = Date.now();
 }
 // Saves meetups to db
 Meetup.prototype.save = function(id) {
-  const SQL = `INSERT INTO meetups (link, name, creation_date, host, location_id) VALUES ($1, $2, $3, $4, $5);`;
+  const SQL = `INSERT INTO meetups (link, name, creation_date, host, created_at, location_id) VALUES ($1, $2, $3, $4, $5);`;
   const values = Object.values(this);
   values.push(id);
   client.query(SQL, values);
@@ -347,7 +384,15 @@ Meetup.lookupMeetups = function(handler) {
   client.query(SQL, [handler.location.id]).then(result => {
     if(result.rowCount > 0) {
       console.log('Got meetup data from SQL');
-      handler.cacheHit(result);
+      // Checks to see if DB data is stale then deletes and gets new API data if so
+      let reqAgeMins = (Date.now() - result.rows[0].created_at) / (1000 * 60);
+      if (reqAgeMins > 4) {
+        console.log(`...but it's stale!`);
+        deleteByLocationId('meetups', handler.location.id);
+        handler.cacheMiss();
+      } else {
+        handler.cacheHit(result)
+      }
     } else {
       console.log('Got meetup data from API');
       handler.cacheMiss();
@@ -366,14 +411,14 @@ function Trail(data) {
   this.summary = data.summary;
   this.trail_url = data.url;
   this.conditions = data.conditionDetails;
-  this.condition_date = data.conditionDate.split(' ').slice(0, 1);
-  this.condition_time = data.conditionDate.split(' ').slice(1, 2);
+  this.condition_date = data.conditionDate.split(' ').slice(0, 1).toString();
+  this.condition_time = data.conditionDate.split(' ').slice(1, 2).toString();
+  this.created_at = Date.now();
 }
 // Saves trails to db
 Trail.prototype.save = function(id) {
-  const SQL = `INSERT INTO trails (name, location, length, stars, star_votes, summary, trail_url, conditions, condition_date, condition_time, location_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`;
+  const SQL = `INSERT INTO trails (name, location, length, stars, star_votes, summary, trail_url, conditions, condition_date, condition_time, created_at, location_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`;
   const values = Object.values(this);
-  console.log(values);
   values.push(id);
   client.query(SQL, values);
 };
@@ -397,7 +442,6 @@ Trail.fetchTrails = function(location) {
   const url = `https://www.hikingproject.com/data/get-trails?lat=${location.latitude}&lon=${location.longitude}&maxDistance=20&key=${process.env.TRAIL_API_KEY}`;
 
   return superagent.get(url).then(result => {
-    console.log(result);
     const trailData = result.body.trails.map(data => {
       const trail = new Trail(data);
       trail.save(location.id);
@@ -413,7 +457,15 @@ Trail.lookupTrails = function(handler) {
   client.query(SQL, [handler.location.id]).then(result => {
     if(result.rowCount > 0) {
       console.log('Got trail data from SQL');
-      handler.cacheHit(result);
+      // Checks to see if DB data is stale then deletes and gets new API data if so
+      let reqAgeMins = (Date.now() - result.rows[0].created_at) / (1000 * 60);
+      if (reqAgeMins > 5) {
+        console.log(`...but it's stale!`);
+        deleteByLocationId('trails', handler.location.id);
+        handler.cacheMiss();
+      } else {
+        handler.cacheHit(result)
+      }
     } else {
       console.log('Got trail data from API');
       handler.cacheMiss();
