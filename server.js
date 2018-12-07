@@ -47,6 +47,9 @@ app.get('/movies', getMovies);
 // Requests meetup data
 app.get('/meetups', getMeetups);
 
+// Requests trail data
+app.get('/trails', getTrails);
+
 
 // Location constructor
 function Location(query, data) {
@@ -306,7 +309,6 @@ function Meetup(data) {
 Meetup.prototype.save = function(id) {
   const SQL = `INSERT INTO meetups (link, name, creation_date, host, location_id) VALUES ($1, $2, $3, $4, $5);`;
   const values = Object.values(this);
-  console.log(values);
   values.push(id);
   client.query(SQL, values);
 };
@@ -330,7 +332,6 @@ Meetup.fetchMeetups = function(location) {
   const url = `https://api.meetup.com/2/open_events?&key=${process.env.MEETUP_API_KEY}&sign=true&photo-host=public&lat=${location.latitude}&topic=softwaredev&lon=${location.longitude}&page=20`;
 
   return superagent.get(url).then(result => {
-    console.log(result);
     const meetupData = result.body.results.map(data => {
       const meetup = new Meetup(data);
       meetup.save(location.id);
@@ -340,7 +341,7 @@ Meetup.fetchMeetups = function(location) {
   });
 };
 
-// Looks up weather from database
+// Looks up meetups from database
 Meetup.lookupMeetups = function(handler) {
   const SQL = `SELECT * FROM meetups WHERE location_id=$1;`;
   client.query(SQL, [handler.location.id]).then(result => {
@@ -349,6 +350,72 @@ Meetup.lookupMeetups = function(handler) {
       handler.cacheHit(result);
     } else {
       console.log('Got meetup data from API');
+      handler.cacheMiss();
+    }
+  }).catch(error => handleError(error));
+};
+
+
+// Trails data constructor
+function Trail(data) {
+  this.name = data.name;
+  this.location = data.location;
+  this.length = data.length;
+  this.stars = data.stars;
+  this.star_votes = data.starVotes;
+  this.summary = data.summary;
+  this.trail_url = data.url;
+  this.conditions = data.conditionDetails;
+  this.condition_date = data.conditionDate.split(' ').slice(0, 1);
+  this.condition_time = data.conditionDate.split(' ').slice(1, 2);
+}
+// Saves trails to db
+Trail.prototype.save = function(id) {
+  const SQL = `INSERT INTO trails (name, location, length, stars, star_votes, summary, trail_url, conditions, condition_date, condition_time, location_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`;
+  const values = Object.values(this);
+  console.log(values);
+  values.push(id);
+  client.query(SQL, values);
+};
+
+// Gets trails from db cahce or makes request to fetch from API
+function getTrails(req, res) {
+  const trailHandler = {
+    location: req.query.data,
+    cacheHit: (result) => {
+      res.send(result.rows);
+    },
+    cacheMiss: () => {
+      Trail.fetchTrails(req.query.data).then(results => res.send(results)).catch(error => handleError(error));
+    },
+  };
+  Trail.lookupTrails(trailHandler);
+}
+
+// Fetches trails from the API and saves to the database
+Trail.fetchTrails = function(location) {
+  const url = `https://www.hikingproject.com/data/get-trails?lat=${location.latitude}&lon=${location.longitude}&maxDistance=20&key=${process.env.TRAIL_API_KEY}`;
+
+  return superagent.get(url).then(result => {
+    console.log(result);
+    const trailData = result.body.trails.map(data => {
+      const trail = new Trail(data);
+      trail.save(location.id);
+      return trail;
+    });
+    return trailData;
+  });
+};
+
+// Looks up trails from database
+Trail.lookupTrails = function(handler) {
+  const SQL = `SELECT * FROM trails WHERE location_id=$1;`;
+  client.query(SQL, [handler.location.id]).then(result => {
+    if(result.rowCount > 0) {
+      console.log('Got trail data from SQL');
+      handler.cacheHit(result);
+    } else {
+      console.log('Got trail data from API');
       handler.cacheMiss();
     }
   }).catch(error => handleError(error));
