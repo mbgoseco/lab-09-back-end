@@ -44,6 +44,9 @@ app.get('/yelp', getRestaurants);
 // Requests movie data
 app.get('/movies', getMovies);
 
+// Requests meetup data
+app.get('/meetups', getMeetups);
+
 
 // Location constructor
 function Location(query, data) {
@@ -277,7 +280,7 @@ Movie.fetchMovies = function(location) {
   });
 };
 
-// Looks up weather from database
+// Looks up movies from database
 Movie.lookupMovies = function(handler) {
   const SQL = `SELECT * FROM movies WHERE location_id=$1;`;
   client.query(SQL, [handler.location.id]).then(result => {
@@ -292,3 +295,61 @@ Movie.lookupMovies = function(handler) {
 };
 
 
+// Meetup data constructor
+function Meetup(data) {
+  this.link = data.event_url;
+  this.name = data.name;
+  this.creation_date = new Date(data.created).toDateString();
+  this.host = data.group.name;
+}
+// Saves meetups to db
+Meetup.prototype.save = function(id) {
+  const SQL = `INSERT INTO meetups (link, name, creation_date, host, location_id) VALUES ($1, $2, $3, $4, $5);`;
+  const values = Object.values(this);
+  console.log(values);
+  values.push(id);
+  client.query(SQL, values);
+};
+
+// Gets meetups from db cahce or makes request to fetch from API
+function getMeetups(req, res) {
+  const meetupHandler = {
+    location: req.query.data,
+    cacheHit: (result) => {
+      res.send(result.rows);
+    },
+    cacheMiss: () => {
+      Meetup.fetchMeetups(req.query.data).then(results => res.send(results)).catch(error => handleError(error));
+    },
+  };
+  Meetup.lookupMeetups(meetupHandler);
+}
+
+// Fetches meetups from the API and saves to the database
+Meetup.fetchMeetups = function(location) {
+  const url = `https://api.meetup.com/2/open_events?&key=${process.env.MEETUP_API_KEY}&sign=true&photo-host=public&lat=${location.latitude}&topic=softwaredev&lon=${location.longitude}&page=20`;
+
+  return superagent.get(url).then(result => {
+    console.log(result);
+    const meetupData = result.body.results.map(data => {
+      const meetup = new Meetup(data);
+      meetup.save(location.id);
+      return meetup;
+    });
+    return meetupData;
+  });
+};
+
+// Looks up weather from database
+Meetup.lookupMeetups = function(handler) {
+  const SQL = `SELECT * FROM meetups WHERE location_id=$1;`;
+  client.query(SQL, [handler.location.id]).then(result => {
+    if(result.rowCount > 0) {
+      console.log('Got meetup data from SQL');
+      handler.cacheHit(result);
+    } else {
+      console.log('Got meetup data from API');
+      handler.cacheMiss();
+    }
+  }).catch(error => handleError(error));
+};
