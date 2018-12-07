@@ -108,7 +108,7 @@ Location.fetchLocation = (query) => {
         location.id = result.rows[0].id;
         return location;
       });
-      return location;
+      //return location;
     }
   });
 };
@@ -126,6 +126,13 @@ Location.lookupLocation = (handler) => {
     }
   }).catch(error => handleError(error));
 };
+////////
+Weather.deleteByLocationId =deleteByLocationId;
+/////clearing the database
+function deleteByLocationId(table,city) {
+  const SQL = `DELETE from ${table} WHERE location_id=${city};`;
+  return client.query(SQL);
+}
 
 
 // Weather constructor
@@ -147,7 +154,12 @@ function getWeather(req, res) {
   const weatherHandler = {
     location: req.query.data,
     cacheHit: (result) => {
-      res.send(result.rows);
+      let howLongResultsStayed =(Date.now()- result.rows[0].created_at) /(1000 * 60);
+      if (howLongResultsStayed > 30) {
+        Weather.deleteByLocationId(Weather.table, req.query.data.id);
+        this.cacheMiss();
+      } else
+        res.send(result.rows);
     },
     cacheMiss: () => {
       Weather.fetchWeather(req.query.data).then(results => res.send(results)).catch(error => handleError(error));
